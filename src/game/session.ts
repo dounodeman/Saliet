@@ -1,0 +1,240 @@
+import type { UnitType } from '../config';
+import { sound } from '../audio/sound';
+import { InputController, type InputHost } from '../input/input';
+import { getMap } from '../maps';
+import { Camera } from '../render/camera';
+import { TEAM_COLORS } from '../render/palette';
+import { Renderer } from '../render/renderer';
+import type { Command } from '../sim/commands';
+import { nearestOwnedCity } from '../sim/cities';
+import type { SimEvent, World } from '../sim/types';
+import { createWorld, step } from '../sim/world';
+import { Hud } from '../ui/hud';
+import { FixedLoop } from './loop';
+
+export interface SessionOptions {
+  mapId: string;
+  seed: number;
+  playerTeam: number;
+}
+
+export interface SessionHooks {
+  /** Esc / menu button. */
+  onMenu(session: GameSession): void;
+  /** The simulation declared a winner. */
+  onGameOver(session: GameSession, winner: number): void;
+}
+
+/** One match: owns the world, loop, renderer, input and HUD. */
+export class GameSession implements InputHost {
+  readonly world: World;
+  readonly camera = new Camera();
+  readonly selection = new Set<number>();
+  readonly playerTeam: number;
+  readonly renderer: Renderer;
+  readonly input: InputController;
+  readonly hud: Hud;
+  readonly loop: FixedLoop;
+  spawnCityId = -1;
+  menuOpen = false;
+  private pending: Command[] = [];
+  private alphaNow = 0;
+  private hudTimer = 0;
+  private gameOverSent = false;
+  private fitted = false;
+  private resizeObserver: ResizeObserver;
+
+  constructor(
+    private canvas: HTMLCanvasElement,
+    hudRoot: HTMLElement,
+    readonly options: SessionOptions,
+    private hooks: SessionHooks,
+  ) {
+    const entry = getMap(options.mapId);
+    this.world = createWorld(entry.build(options.seed), options.seed);
+    this.playerTeam = options.playerTeam;
+    this.renderer = new Renderer(canvas, this.world.map);
+    this.input = new InputController(canvas, this);
+    this.hud = new Hud(hudRoot, this.playerTeam, {
+      queue: (t) => this.queueUnit(t),
+      cancel: (itemId) => this.issue({ kind: 'cancel', team: this.playerTeam, itemId }),
+      togglePause: () => this.togglePause(),
+      changeSpeed: (d) => this.changeSpeed(d),
+      openMenu: () => this.openMenu(),
+    });
+    this.spawnCityId = this.world.cities.find((c) => c.owner === this.playerTeam)?.id ?? -1;
+    this.loop = new FixedLoop(
+      () => this.tick(),
+      (alpha, realDt) => this.frame(alpha, realDt),
+    );
+    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver.observe(canvas.parentElement ?? canvas);
+    this.resize();
+  }
+
+  start(): void {
+    this.loop.start();
+  }
+
+  dispose(): void {
+    this.loop.stop();
+    this.input.dispose();
+    this.resizeObserver.disconnect();
+  }
+
+  private resize(): void {
+    const parent = this.canvas.parentElement ?? document.body;
+    const w = parent.clientWidth;
+    const h = parent.clientHeight;
+    this.camera.setViewport(w, h);
+    this.renderer.resize(w, h, window.devicePixelRatio || 1);
+    // Fit the map once we have a real viewport (the page may start hidden at 0×0).
+    if (!this.fitted && w > 50 && h > 50) {
+      this.fitted = true;
+      this.camera.fit(this.world.map.width, this.world.map.height);
+    }
+  }
+
+  // ---- InputHost -------------------------------------------------------
+
+  getWorld(): World {
+    return this.world;
+  }
+
+  alpha(): number {
+    return this.alphaNow;
+  }
+
+  issue(cmd: Command): void {
+    this.pending.push(cmd);
+  }
+
+  setSpawnCity(cityId: number): void {
+    this.spawnCityId = cityId;
+    const c = this.world.cities.find((x) => x.id === cityId);
+    if (c) this.renderer.effects.ring(c.x, c.y, performance.now() / 1000, TEAM_COLORS[this.playerTeam].main, 1.2, 2.6, 0.5);
+    sound.play('ui');
+  }
+
+  queueUnit(type: UnitType): void {
+    let city = this.world.cities.find((c) => c.id === this.spawnCityId && c.owner === this.playerTeam);
+    if (!city) {
+      const any = this.world.cities.find((c) => c.owner === this.playerTeam);
+      city = any ? nearestOwnedCity(this.world, this.playerTeam, any.x, any.y) : undefined;
+      if (city) this.spawnCityId = city.id;
+    }
+    if (!city) {
+      sound.play('error');
+      this.hud.toast('You have no city to build in', 'bad');
+      return;
+    }
+    this.issue({ kind: 'produce', team: this.playerTeam, unitType: type, cityId: city.id });
+    sound.play('queue');
+  }
+
+  togglePause(): void {
+    this.loop.paused = !this.loop.paused;
+    sound.play('ui');
+  }
+
+  changeSpeed(dir: 1 | -1): void {
+    this.loop.changeSpeed(dir);
+    sound.play('ui');
+  }
+
+  openMenu(): void {
+    this.hooks.onMenu(this);
+  }
+
+  toggleMute(): void {
+    const muted = sound.toggleMute();
+    this.hud.toast(muted ? 'Sound off' : 'Sound on');
+  }
+
+  feedback(kind: 'select' | 'move' | 'line' | 'error'): void {
+    sound.play(kind);
+  }
+
+  acceptsInput(): boolean {
+    return !this.menuOpen;
+  }
+
+  // ---- Loop ------------------------------------------------------------
+
+  private tick(): void {
+    const commands = this.pending;
+    this.pending = [];
+    step(this.world, commands);
+    this.handleEvents(this.world.events);
+  }
+
+  private handleEvents(events: readonly SimEvent[]): void {
+    const now = performance.now() / 1000;
+    const fx = this.renderer.effects;
+    for (const e of events) {
+      switch (e.kind) {
+        case 'spawn':
+          fx.ring(e.x, e.y, now, TEAM_COLORS[e.team].main, 0.3, 1.4, 0.5, 1.5);
+          if (e.team === this.playerTeam) sound.play('spawn');
+          break;
+        case 'death':
+          fx.puff(e.x, e.y, now, TEAM_COLORS[e.team].dark, e.type === 'heavy' ? 1.3 : 1);
+          fx.ring(e.x, e.y, now, TEAM_COLORS[e.team].main, 0.3, 1.6, 0.7, 1.5);
+          this.selection.delete(e.unitId);
+          sound.play('death');
+          break;
+        case 'capture': {
+          const c = this.world.cities[e.cityId];
+          fx.ring(c.x, c.y, now, TEAM_COLORS[e.team].main, 1, 5, 1.1, 3);
+          if (e.team === this.playerTeam) {
+            this.hud.toast(`${c.name} captured`, 'good');
+            sound.play('capture');
+          } else if (e.prevOwner === this.playerTeam) {
+            this.hud.toast(`${c.name} lost!`, 'bad');
+            sound.play('cityLost');
+          }
+          break;
+        }
+        case 'victory':
+          if (!this.gameOverSent) {
+            this.gameOverSent = true;
+            sound.play(e.team === this.playerTeam ? 'victory' : 'defeat');
+            this.hooks.onGameOver(this, e.team);
+          }
+          break;
+      }
+    }
+  }
+
+  private frame(alpha: number, realDt: number): void {
+    this.alphaNow = alpha;
+    this.input.update(realDt);
+    this.renderer.render(
+      {
+        world: this.world,
+        alpha,
+        playerTeam: this.playerTeam,
+        selection: this.selection,
+        box: this.input.box,
+        linePreview: this.input.linePoints,
+        spawnCityId: this.spawnCityId,
+        hoverUnitId: this.input.hoverUnitId,
+        now: performance.now() / 1000,
+      },
+      this.camera,
+    );
+    this.hudTimer -= realDt;
+    if (this.hudTimer <= 0) {
+      this.hudTimer = 0.1;
+      this.hud.update({
+        world: this.world,
+        playerTeam: this.playerTeam,
+        paused: this.loop.paused,
+        speed: this.loop.speed,
+        spawnCityId: this.spawnCityId,
+        selection: this.selection,
+        muted: sound.muted,
+      });
+    }
+  }
+}
