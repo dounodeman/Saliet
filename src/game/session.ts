@@ -5,6 +5,7 @@ import { sound } from '../audio/sound';
 import { InputController, type InputHost } from '../input/input';
 import { getMap } from '../maps';
 import { Camera } from '../render/camera';
+import { Minimap } from '../render/minimap';
 import { TEAM_COLORS } from '../render/palette';
 import { Renderer } from '../render/renderer';
 import type { Command } from '../sim/commands';
@@ -20,13 +21,15 @@ export interface SessionOptions {
   /** Team the human controls; -1 to spectate an AI-vs-AI match. */
   playerTeam: number;
   difficulty: DifficultyName;
+  /** Menu backdrop: an AI match with no HUD and no input. */
+  background?: boolean;
 }
 
 export interface SessionHooks {
   /** Esc / menu button. */
   onMenu(session: GameSession): void;
   /** The simulation declared a winner. */
-  onGameOver(session: GameSession, winner: number): void;
+  onGameOver(session: GameSession, winner: number, reason: 'cities' | 'elimination' | 'draw'): void;
 }
 
 /** One match: owns the world, loop, renderer, input and HUD. */
@@ -40,6 +43,8 @@ export class GameSession implements InputHost {
   readonly hud: Hud;
   readonly loop: FixedLoop;
   readonly ais: AIController[] = [];
+  readonly spectating: boolean;
+  readonly minimap: Minimap;
   spawnCityId = -1;
   menuOpen = false;
   private pending: Command[] = [];
@@ -57,11 +62,14 @@ export class GameSession implements InputHost {
   ) {
     const entry = getMap(options.mapId);
     this.world = createWorld(entry.build(options.seed), options.seed);
-    const spectating = options.playerTeam < 0;
+    const spectating = options.playerTeam < 0 || options.background === true;
+    this.spectating = spectating;
     this.playerTeam = spectating ? 0 : options.playerTeam;
     for (let t = 0; t < this.world.teams.length; t++) {
       if (spectating || t !== this.playerTeam) this.ais.push(new AIController(t, options.difficulty, options.seed));
     }
+    this.menuOpen = options.background === true;
+    this.minimap = new Minimap(this.world, this.camera);
     this.renderer = new Renderer(canvas, this.world.map);
     this.input = new InputController(canvas, this);
     this.hud = new Hud(hudRoot, this.playerTeam, {
@@ -70,8 +78,10 @@ export class GameSession implements InputHost {
       togglePause: () => this.togglePause(),
       changeSpeed: (d) => this.changeSpeed(d),
       openMenu: () => this.openMenu(),
-    });
-    this.spawnCityId = this.world.cities.find((c) => c.owner === this.playerTeam)?.id ?? -1;
+      toggleMute: () => this.toggleMute(),
+    }, { spectating, minimap: this.minimap.canvas });
+    hudRoot.style.display = options.background ? 'none' : '';
+    this.spawnCityId = spectating ? -1 : (this.world.cities.find((c) => c.owner === this.playerTeam)?.id ?? -1);
     this.loop = new FixedLoop(
       () => this.tick(),
       (alpha, realDt) => this.frame(alpha, realDt),
@@ -88,7 +98,9 @@ export class GameSession implements InputHost {
   dispose(): void {
     this.loop.stop();
     this.input.dispose();
+    this.minimap.dispose();
     this.resizeObserver.disconnect();
+    this.hud.root.innerHTML = '';
   }
 
   private resize(): void {
@@ -115,6 +127,7 @@ export class GameSession implements InputHost {
   }
 
   issue(cmd: Command): void {
+    if (this.spectating) return;
     this.pending.push(cmd);
   }
 
@@ -126,6 +139,7 @@ export class GameSession implements InputHost {
   }
 
   queueUnit(type: UnitType): void {
+    if (this.spectating) return;
     let city = this.world.cities.find((c) => c.id === this.spawnCityId && c.owner === this.playerTeam);
     if (!city) {
       const any = this.world.cities.find((c) => c.owner === this.playerTeam);
@@ -185,18 +199,21 @@ export class GameSession implements InputHost {
       switch (e.kind) {
         case 'spawn':
           fx.ring(e.x, e.y, now, TEAM_COLORS[e.team].main, 0.3, 1.4, 0.5, 1.5);
-          if (e.team === this.playerTeam) sound.play('spawn');
+          if (e.team === this.playerTeam && !this.spectating) sound.play('spawn');
           break;
         case 'death':
           fx.puff(e.x, e.y, now, TEAM_COLORS[e.team].dark, e.type === 'heavy' ? 1.3 : 1);
           fx.ring(e.x, e.y, now, TEAM_COLORS[e.team].main, 0.3, 1.6, 0.7, 1.5);
           this.selection.delete(e.unitId);
-          sound.play('death');
+          if (!this.options.background) sound.play('death');
           break;
         case 'capture': {
           const c = this.world.cities[e.cityId];
           fx.ring(c.x, c.y, now, TEAM_COLORS[e.team].main, 1, 5, 1.1, 3);
-          if (e.team === this.playerTeam) {
+          if (this.options.background) break;
+          if (this.spectating) {
+            this.hud.toast(`${TEAM_COLORS[e.team].name} takes ${c.name}`, 'info');
+          } else if (e.team === this.playerTeam) {
             this.hud.toast(`${c.name} captured`, 'good');
             sound.play('capture');
           } else if (e.prevOwner === this.playerTeam) {
@@ -208,8 +225,8 @@ export class GameSession implements InputHost {
         case 'victory':
           if (!this.gameOverSent) {
             this.gameOverSent = true;
-            sound.play(e.team === this.playerTeam ? 'victory' : 'defeat');
-            this.hooks.onGameOver(this, e.team);
+            if (!this.spectating) sound.play(e.team === this.playerTeam ? 'victory' : 'defeat');
+            this.hooks.onGameOver(this, e.team, e.reason);
           }
           break;
       }
@@ -234,8 +251,9 @@ export class GameSession implements InputHost {
       this.camera,
     );
     this.hudTimer -= realDt;
-    if (this.hudTimer <= 0) {
+    if (this.hudTimer <= 0 && !this.options.background) {
       this.hudTimer = 0.1;
+      this.minimap.draw();
       this.hud.update({
         world: this.world,
         playerTeam: this.playerTeam,

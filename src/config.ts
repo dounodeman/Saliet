@@ -151,7 +151,7 @@ export const CITY = {
   /** Units within this radius count as holding the city. */
   captureRadius: 2.2,
   /** Seconds of uncontested holding needed to capture. */
-  captureTime: 6,
+  captureTime: 8,
   /** Capture progress lost per second when nobody is holding it. */
   captureDecayPerSec: 0.25,
   /** Production points per second per owned city. */

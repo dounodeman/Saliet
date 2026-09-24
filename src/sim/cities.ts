@@ -95,7 +95,9 @@ export function updateProduction(world: World): void {
 
 export function spawnAtCity(world: World, team: number, type: UnitType, city: City): void {
   const stats = world.teams[team].stats;
-  const dir = DIR8[(stats.produced * 3) % 8];
+  // Rotate through spawn spots; team 1 uses the point-mirrored directions so
+  // neither side systematically spawns closer to the front.
+  const dir = DIR8[(stats.produced * 3 + team * 4) % 8];
   const u = createUnit(world, team, type, city.x + dir.x * CITY.spawnOffset, city.y + dir.y * CITY.spawnOffset);
   stats.produced++;
   world.events.push({ kind: 'spawn', unitId: u.id, team, type, x: u.x, y: u.y });

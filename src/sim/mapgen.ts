@@ -71,10 +71,10 @@ export function generateScenario(seed: number, opts: GenOptions = {}): Scenario 
       e = (e - 0.5) * 1.7 + 0.5;
       const m = fbm(x / 13, y / 13, mSeed, 3);
       let t: Terrain = Terrain.Plains;
-      if (e < 0.18) t = Terrain.Water;
-      else if (e > 0.84) t = Terrain.Mountains;
-      else if (e > 0.69) t = Terrain.Hills;
-      else if (m > 0.6) t = Terrain.Forest;
+      if (e < 0.15) t = Terrain.Water;
+      else if (e > 0.86) t = Terrain.Mountains;
+      else if (e > 0.75) t = Terrain.Hills;
+      else if (m > 0.64) t = Terrain.Forest;
       terrain[y * W + x] = t;
     }
   }

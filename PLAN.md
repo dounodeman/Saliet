@@ -58,8 +58,10 @@ salient/
     config.ts             *** every balance number lives here ***
     sim/
       types.ts            World, Unit, City, TeamState, SimEvent
-      rng.ts              seeded PRNG (sfc32) with fork()
+      rng.ts              seeded PRNG (sfc32) + string hash
       vec.ts              tiny 2D helpers
+      noise.ts            deterministic value noise (maps, terrain art)
+      units.ts            unit creation, death, stamina/health upkeep
       terrain.ts          Terrain enum, per-unit-type modifier lookup
       mapdef.ts           map JSON schema + rasterizer (regions → grid)
       mapgen.ts           procedural, point-symmetric map generator
@@ -86,6 +88,7 @@ salient/
       terrainLayer.ts     baked terrain bitmap (organic edges, hatching)
       territoryLayer.ts   territory tint + marching-squares front lines
       effects.ts          transient hit sparks, death rings, capture pulses
+      minimap.ts          overview map (click/drag to move the camera)
       renderer.ts         draws a frame
     input/input.ts        mouse/keyboard → selection + Commands
     ui/hud.ts, menu.ts, style.css
@@ -94,7 +97,7 @@ salient/
     game/session.ts       wires everything for one match
     maps/*.json, maps/index.ts
   tests/*.test.ts         Vitest (node env, sim only)
-  scripts/balance.ts      headless AI-vs-AI batch for balance passes
+  scripts/balance.test.ts headless AI-vs-AI batch for balance passes (npm run balance)
 ```
 
 ## 3. Simulation design
@@ -275,3 +278,39 @@ browser pane (screenshots), fix, `git commit`.
 * Procedural maps are point-symmetric for fairness and verified to connect both
   capitals (regenerate with the next seed otherwise).
 * Sound is synthesized with WebAudio (no asset files); `M` mutes.
+
+## 9. Decisions made during implementation
+
+* **Tooling:** Node 24 LTS, TypeScript 7, Vite 8, Vitest 5 (latest at build time).
+* **Territory smoothing.** Pure presence painting produced "spaghetti" (raid
+  trails everywhere, no readable front). Two extra rules fixed it: unoccupied
+  cells follow their 8-neighbourhood majority (thin trails in enemy land erode,
+  specks in neutral land fade), and small neutral pockets fully enclosed by one
+  team (≤ 600 cells, not touching the map edge) are absorbed.
+* **Owned cities claim a 5-cell radius** (up from 3.5) so captured cities hold
+  real ground.
+* **Water path penalty.** A* cost = travel time × a per-terrain penalty
+  (`PATH_COST_MULT`, water ×2), because units are weak in water, not just slow.
+* **Hold points.** Idle units remember where they stand and drift back after
+  being shoved, so drawn lines keep their shape. A walking unit bumping a
+  stationary friend gets a sideways component in the push (prevents head-on
+  deadlocks).
+* **Sandbox rules.** `createWorld(scenario, seed, rules)` can disable victory
+  and supply; unit-level tests use this so they don't end instantly.
+* **AI front pushing.** Holding alone produced stalemates. A front sector with
+  local superiority advances its line 3 cells into enemy land (easy never
+  pushes). Measured: normal-with-push beats normal-without 9–6.
+* **Spawn positions are mirrored for team 1** so neither side spawns nearer the front.
+* **Balance pass:** capture time 6 → 8 s (lone raiders snowballed too easily);
+  random-map terrain thresholds retuned from ~50% to ~65% plains (heavies had
+  no ground to fight on). Result over 20 random-map games per pairing, both
+  sides: hard beats normal 15–3 (2 draws), hard beats easy 16–0 (4 draws),
+  normal beats easy 14–0 (6 draws); the weaker side never won against easy.
+* **Menu backdrop** is a live hard-vs-hard match on a random map.
+
+## 10. Status
+
+All six milestones are complete; each was type-checked, tested, built,
+play-tested in the browser and committed. Possible next steps: fog of war (filter
+`makeView`), replays from the command log, lockstep multiplayer, more maps,
+per-unit supply-range overlay.

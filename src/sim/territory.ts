@@ -98,7 +98,7 @@ export function updateTerritory(world: World): void {
 }
 
 let visited = new Uint8Array(0);
-const MAX_HOLE = 220;
+const MAX_HOLE = 600;
 
 /**
  * Neutral pockets completely enclosed by one team's land (not touching the map

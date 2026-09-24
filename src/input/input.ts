@@ -66,7 +66,10 @@ export class InputController {
     on(window, 'mouseup', (e) => this.onMouseUp(e));
     on(canvas, 'wheel', (e) => this.onWheel(e), { passive: false });
     on(canvas, 'contextmenu', (e) => e.preventDefault());
-    on(canvas, 'mouseenter', () => (this.mouse.inside = true));
+    on(canvas, 'mouseenter', (e) => {
+      const p = this.localPos(e);
+      this.mouse = { x: p.x, y: p.y, inside: true };
+    });
     on(canvas, 'mouseleave', () => (this.mouse.inside = false));
     on(window, 'blur', () => this.keys.clear());
     on(window, 'keydown', (e) => this.onKeyDown(e));

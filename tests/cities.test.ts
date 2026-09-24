@@ -32,8 +32,7 @@ describe('city capture', () => {
     const w = smallWorld([unit(0, 'light', 20, 15)], { cities: [city('A', 3, 3, 0), city('B', 37, 27, 1), city('N', 20, 15)] });
     const n = w.cities[2];
     for (let i = 0; i < secs(2); i++) step(w);
-    const p = n.captureProgress;
-    expect(p).toBeGreaterThan(0.3);
+    expect(n.captureProgress).toBeCloseTo(2 / CITY.captureTime, 1);
     // An enemy arrives next to the city (but out of contact range): contested.
     const w2enemy = w.units.length;
     expect(w2enemy).toBe(1);

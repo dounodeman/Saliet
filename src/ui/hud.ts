@@ -11,6 +11,12 @@ export interface HudCallbacks {
   togglePause(): void;
   changeSpeed(dir: 1 | -1): void;
   openMenu(): void;
+  toggleMute(): void;
+}
+
+export interface HudOptions {
+  spectating: boolean;
+  minimap?: HTMLCanvasElement;
 }
 
 export interface HudState {
@@ -66,12 +72,14 @@ export class Hud {
   private selPanel: HTMLElement;
   private banner: HTMLElement;
   private toasts: HTMLElement;
+  private muteBtn: HTMLButtonElement;
   private queueKey = '';
 
   constructor(
     readonly root: HTMLElement,
     playerTeam: number,
     private cb: HudCallbacks,
+    opts: HudOptions = { spectating: false },
   ) {
     root.innerHTML = '';
     root.className = 'hud';
@@ -116,10 +124,13 @@ export class Hud {
     this.pauseBtn = el('button', 'icon-btn', 'Ⅱ');
     this.pauseBtn.title = 'Pause (Space)';
     this.pauseBtn.onclick = () => cb.togglePause();
+    this.muteBtn = el('button', 'icon-btn', '♪');
+    this.muteBtn.title = 'Sound (M)';
+    this.muteBtn.onclick = () => cb.toggleMute();
     const menuBtn = el('button', 'icon-btn', '☰');
     menuBtn.title = 'Menu (Esc)';
     menuBtn.onclick = () => cb.openMenu();
-    clockPanel.append(this.clock, slower, this.speed, faster, this.pauseBtn, menuBtn);
+    clockPanel.append(this.clock, slower, this.speed, faster, this.pauseBtn, this.muteBtn, menuBtn);
     top.append(res, enemyPanel, clockPanel);
 
     // Bottom: production + selection.
@@ -152,7 +163,18 @@ export class Hud {
     this.selStam = bar('Stamina');
     this.selDetail = el('div', 'sel-detail muted');
     this.selPanel.append(this.selTitle, this.selHp.root, this.selStam.root, this.selDetail);
-    bottom.append(prod, this.selPanel);
+    const right = el('div', 'hud-right');
+    if (opts.minimap) {
+      const mm = el('div', 'panel minimap-panel');
+      mm.append(opts.minimap);
+      right.append(mm);
+    }
+    right.append(this.selPanel);
+    bottom.append(prod, right);
+    if (opts.spectating) {
+      prod.classList.add('hidden');
+      badge.append(el('span', 'spectating', 'Spectating'));
+    }
 
     this.banner = el('div', 'paused-banner', 'Paused — press Space to resume');
     this.toasts = el('div', 'toasts');
@@ -187,6 +209,7 @@ export class Hud {
     this.clock.textContent = fmtTime(world.tick);
     this.speed.textContent = `${s.speed}×`;
     this.pauseBtn.textContent = s.paused ? '▶' : 'Ⅱ';
+    this.muteBtn.classList.toggle('off', s.muted);
     this.banner.classList.toggle('show', s.paused);
 
     // Production.
