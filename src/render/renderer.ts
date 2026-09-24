@@ -5,6 +5,7 @@ import type { Camera } from './camera';
 import { Effects } from './effects';
 import { BACKGROUND, INK, NEUTRAL_COLOR, TEAM_COLORS, teamColor } from './palette';
 import { bakeTerrain } from './terrainLayer';
+import { TerritoryLayer } from './territoryLayer';
 
 export interface RenderState {
   world: World;
@@ -30,6 +31,7 @@ export class Renderer {
   readonly ctx: CanvasRenderingContext2D;
   readonly effects = new Effects();
   private terrain: HTMLCanvasElement;
+  private territory: TerritoryLayer;
   private dpr = 1;
   private cssW = 1;
   private cssH = 1;
@@ -40,6 +42,7 @@ export class Renderer {
   ) {
     this.ctx = canvas.getContext('2d', { alpha: false })!;
     this.terrain = bakeTerrain(map);
+    this.territory = new TerritoryLayer(map);
   }
 
   resize(cssW: number, cssH: number, dpr: number): void {
@@ -77,6 +80,7 @@ export class Renderer {
     ctx.lineWidth = 1.5 / z;
     ctx.strokeRect(0, 0, W, H);
 
+    this.territory.draw(ctx, world.territory, z);
     this.drawCities(s, z);
     this.drawOrders(s, z);
     this.drawUnits(s, z);

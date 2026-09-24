@@ -140,7 +140,7 @@ export const TERRITORY = {
   /** Radius (cells) in which a unit asserts presence. */
   unitRadius: 2.5,
   /** Radius (cells) in which an owned city asserts presence. */
-  cityRadius: 3.5,
+  cityRadius: 5,
   /** Control gained (or removed from the previous owner) per second of uncontested presence. */
   gainPerSec: 0.6,
   /** Radius of territory each team owns around its cities at game start. */

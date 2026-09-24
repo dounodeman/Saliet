@@ -129,8 +129,19 @@ export interface LoggedCommand {
   cmd: Command;
 }
 
+/** Rule switches (all on in real matches; tests and sandboxes can turn some off). */
+export interface Rules {
+  /** Check win conditions. */
+  victory: boolean;
+  /** Supply network, supply cap and starvation. */
+  supply: boolean;
+}
+
+export const DEFAULT_RULES: Rules = { victory: true, supply: true };
+
 export interface World {
   tick: number;
+  rules: Rules;
   seed: number;
   /** sfc32 state; the only source of randomness in the simulation. */
   rng: Uint32Array;

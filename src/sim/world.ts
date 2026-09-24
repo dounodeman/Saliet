@@ -1,13 +1,16 @@
-import { CITY, UNIT_STATS } from '../config';
+import { CITY, SUPPLY, TERRITORY, UNIT_STATS } from '../config';
+import { updateCities, updateProduction } from './cities';
 import { resolveCombat } from './combat';
 import { applyCommand, type Command } from './commands';
 import { moveUnits, processPathQueue, separateUnits, updateStall } from './movement';
 import { buildNavGrid } from './pathfinding';
 import { createRngState } from './rng';
 import { SpatialHash } from './spatial';
-import { createTerritory } from './territory';
-import { NUM_TEAMS, type Scenario, type TeamState, type World } from './types';
+import { updateSupply } from './supply';
+import { createTerritory, initTerritory, updateTerritory } from './territory';
+import { DEFAULT_RULES, NUM_TEAMS, type Rules, type Scenario, type TeamState, type World } from './types';
 import { createUnit, removeDeadUnits, updateConditions } from './units';
+import { checkVictory } from './victory';
 
 /** Derived, non-logical helpers kept next to the world (never hashed or serialized). */
 const spatialByWorld = new WeakMap<World, SpatialHash>();
@@ -22,7 +25,7 @@ function spatialFor(world: World): SpatialHash {
   return h;
 }
 
-export function createWorld(scenario: Scenario, seed: number): World {
+export function createWorld(scenario: Scenario, seed: number, rules: Partial<Rules> = {}): World {
   const map = scenario.map;
   const teams: TeamState[] = [];
   for (let t = 0; t < NUM_TEAMS; t++) {
@@ -30,6 +33,7 @@ export function createWorld(scenario: Scenario, seed: number): World {
   }
   const world: World = {
     tick: 0,
+    rules: { ...DEFAULT_RULES, ...rules },
     seed,
     rng: createRngState(seed),
     map,
@@ -55,6 +59,8 @@ export function createWorld(scenario: Scenario, seed: number): World {
     pathQueue: [],
   };
   for (const u of scenario.units) createUnit(world, u.team, u.type, u.x, u.y);
+  initTerritory(world);
+  if (world.rules.supply) updateSupply(world);
   return world;
 }
 
@@ -84,6 +90,12 @@ export function step(world: World, commands: readonly Command[] = []): void {
   updateStall(world);
   updateConditions(world);
   removeDeadUnits(world);
+
+  if (world.tick % TERRITORY.intervalTicks === 0) updateTerritory(world);
+  updateCities(world);
+  updateProduction(world);
+  if (world.rules.supply && world.tick % SUPPLY.intervalTicks === 0) updateSupply(world);
+  if (world.rules.victory) checkVictory(world);
 
   world.tick++;
 }

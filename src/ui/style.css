@@ -451,3 +451,48 @@ kbd {
     gap: 10px;
   }
 }
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 10px 40px rgba(40, 30, 10, 0.3);
+  padding: 28px 32px;
+  min-width: 300px;
+  text-align: center;
+}
+
+.card h1 {
+  font-family: var(--title-font);
+  font-weight: 600;
+  font-size: 40px;
+  margin: 0 0 16px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: #fffdf5;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: rgba(45, 42, 36, 0.4);
+  background: #fff;
+}
+
+.btn.primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fbf7ea;
+}
+
+.btn.primary:hover {
+  background: #45403a;
+}

@@ -1,6 +1,6 @@
 import type { UnitType } from '../src/config';
 import { Terrain } from '../src/sim/terrain';
-import type { CitySpec, MapData, Scenario, UnitSpec } from '../src/sim/types';
+import type { CitySpec, MapData, Rules, Scenario, UnitSpec } from '../src/sim/types';
 import { createWorld } from '../src/sim/world';
 
 /** Builds a map from rows of characters: . plains, f forest, h hills, ~ water, M mountains. */
@@ -38,13 +38,18 @@ export function city(name: string, x: number, y: number, owner = -1): CitySpec {
   return { name, x, y, owner };
 }
 
-/** A small world on plains with one city per team in the corners. */
-export function smallWorld(units: UnitSpec[], opts: { w?: number; h?: number; seed?: number; map?: MapData } = {}) {
+/**
+ * A small world on plains with one city per team in the corners. By default it is
+ * a sandbox (no victory checks, no supply) so unit-level behaviour can be tested
+ * in isolation; pass `rules` to switch systems back on.
+ */
+export function smallWorld(
+  units: UnitSpec[],
+  opts: { w?: number; h?: number; seed?: number; map?: MapData; rules?: Partial<Rules>; cities?: CitySpec[] } = {},
+) {
   const w = opts.w ?? 40;
   const h = opts.h ?? 30;
   const map = opts.map ?? plainMap(w, h);
-  return createWorld(
-    scenario(map, [city('A', 3, 3, 0), city('B', map.width - 3, map.height - 3, 1)], units),
-    opts.seed ?? 1,
-  );
+  const cities = opts.cities ?? [city('A', 3, 3, 0), city('B', map.width - 3, map.height - 3, 1)];
+  return createWorld(scenario(map, cities, units), opts.seed ?? 1, { victory: false, supply: false, ...opts.rules });
 }

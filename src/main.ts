@@ -14,7 +14,12 @@ const session = new GameSession(
       s.togglePause();
     },
     onGameOver: (s, winner) => {
-      s.hud.toast(winner === s.playerTeam ? 'Victory!' : 'Defeat', winner === s.playerTeam ? 'good' : 'bad');
+      const overlay = document.getElementById('overlay')!;
+      const won = winner === s.playerTeam;
+      overlay.innerHTML = `<div class="card end"><h1>${won ? 'Victory' : winner === -2 ? 'Draw' : 'Defeat'}</h1>
+        <button class="btn primary" id="again">Play again</button></div>`;
+      overlay.classList.add('show');
+      document.getElementById('again')!.onclick = () => location.reload();
     },
   },
 );
