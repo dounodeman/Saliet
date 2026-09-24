@@ -6,6 +6,8 @@ good front lines — and pushing them.
 
 *Salient* (n.): a bulge in a front line that pushes into enemy territory.
 
+**▶ Play it in your browser: https://dounodeman.github.io/Saliet/**
+
 ![Two armies meeting at Midhollow](docs/screenshot.jpg)
 
 ## Quick start
@@ -26,6 +28,9 @@ Other scripts:
 | `npm run typecheck` | `tsc --noEmit` over sources, tests and scripts |
 | `npm test` | Vitest unit tests for the simulation and AI (~12 s) |
 | `npm run balance` | Headless AI-vs-AI batches for balance passes (env: `PAIRS=hard:easy,normal:easy SEEDS=3 MAPS=twin-rivers,random`) |
+
+Every push to `main` is type-checked, tested, built and published to GitHub
+Pages by `.github/workflows/deploy.yml`.
 
 Skip the menu with URL parameters: `?map=twin-rivers|highland-pass|random&ai=easy|normal|hard&seed=42`,
 add `&spectate` to watch the AI play itself.
