@@ -6,7 +6,8 @@ good front lines — and pushing them.
 
 *Salient* (n.): a bulge in a front line that pushes into enemy territory.
 
-**▶ Play it in your browser: https://dounodeman.github.io/Saliet/**
+**▶ Play it in your browser: https://dounodeman.github.io/Saliet/** — against the
+computer, or online against a friend (click *Play with a friend* and send them the link).
 
 ![Two armies meeting at Midhollow](docs/screenshot.jpg)
 
@@ -37,7 +38,22 @@ add `&spectate` to watch the AI play itself.
 
 ## How to play
 
-You are **Cobalt** (blue). **Vermilion** (red) is the computer.
+Against the computer you are **Cobalt** (blue) and **Vermilion** (red) is the AI.
+
+### Playing with a friend
+
+1. Pick a map and click **Play with a friend**. You get a link like
+   `https://dounodeman.github.io/Saliet/?join=K7M2QX`.
+2. Send it to your friend. When they open it, the game starts for both of you —
+   you are Cobalt, they are Vermilion. (They can also type the code on the main menu.)
+3. Keep the game page open. Online games can't be paused; if one of you leaves or
+   the connection drops, the computer takes over the missing player's army.
+   After a game the host can start a rematch.
+
+Connections are peer-to-peer (WebRTC). The free public PeerJS server only
+introduces the two browsers; if a direct connection isn't possible it falls back
+to a public relay. Very strict networks (some schools, offices or VPNs) may still
+block it — try another network.
 
 - **Cities** give you production points, and each city **supports 5 units**. Build
   more than your cities can feed and the extra units starve.
@@ -81,7 +97,8 @@ src/
   ai/              computer opponent (sees a PlayerView, emits Commands)
   render/          Canvas 2D renderer, camera, terrain/territory layers, minimap
   input/           mouse & keyboard → selection and Commands
-  ui/              HUD, menus, styles
+  ui/              HUD, menus, lobby, styles
+  net/             online play: protocol, lockstep, PeerJS transport, match flow
   game/            fixed-timestep loop, match session
   maps/            hand-authored JSON maps
 tests/             Vitest suites
@@ -98,6 +115,13 @@ scripts/           headless balance batches
   commands (`move`, `line`, `halt`, `produce`, `cancel`) and logs them with
   their tick, so the log plus seed plus map is a replay — and exactly what a
   lockstep multiplayer layer would exchange.
+- **Online play is deterministic lockstep.** Both browsers run the same
+  simulation; a player's command is scheduled a few ticks ahead (the delay is
+  picked from the measured ping), sent to the other side, and a tick only runs
+  once both players' commands for it are known. The two sides compare state
+  hashes every 5 seconds to catch any desync. Only commands travel over the
+  network (`src/net/`), and they're checked so a player can only command their
+  own army.
 - **The AI plays fair.** It receives a `PlayerView` (everything on the map,
   but only its *own* production points and queue) and returns the same
   Commands a human produces. Difficulty changes reaction time and decision
@@ -140,5 +164,19 @@ All numbers live in `src/config.ts`. After changing them, run
 | hard vs normal | 15 | 3 | 2 | 6.9 min |
 | hard vs easy | 16 | 0 | 4 | 7.6 min |
 | normal vs easy | 14 | 0 | 6 | 8.1 min |
+
+## Working on the game with Claude on GitHub
+
+The repo is set up for the [Claude GitHub App](https://github.com/apps/claude): write
+`@claude` in an issue or pull request (e.g. *"@claude add a snow map"*) and Claude
+works on it and opens a pull request; merging it redeploys the game. Only the repo
+owner and collaborators can trigger it. One-time setup:
+
+1. Install the Claude GitHub App on this repository: https://github.com/apps/claude
+2. In the repo's **Settings → Secrets and variables → Actions**, add one secret:
+   `CLAUDE_CODE_OAUTH_TOKEN` (run `claude setup-token` with Claude Code to use your
+   Claude plan) **or** `ANTHROPIC_API_KEY` (from console.anthropic.com).
+
+The workflow is `.github/workflows/claude.yml`; project rules for Claude are in `CLAUDE.md`.
 
 See [PLAN.md](PLAN.md) for the design notes and decisions.

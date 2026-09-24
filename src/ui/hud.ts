@@ -73,6 +73,9 @@ export class Hud {
   private banner: HTMLElement;
   private toasts: HTMLElement;
   private muteBtn: HTMLButtonElement;
+  private speedControls: HTMLElement[] = [];
+  private netLabel: HTMLElement;
+  private waitBanner: HTMLElement;
   private queueKey = '';
 
   constructor(
@@ -130,7 +133,9 @@ export class Hud {
     const menuBtn = el('button', 'icon-btn', '☰');
     menuBtn.title = 'Menu (Esc)';
     menuBtn.onclick = () => cb.openMenu();
-    clockPanel.append(this.clock, slower, this.speed, faster, this.pauseBtn, this.muteBtn, menuBtn);
+    this.netLabel = el('span', 'net-label hidden-net', '');
+    this.speedControls = [slower, this.speed, faster, this.pauseBtn];
+    clockPanel.append(this.clock, this.netLabel, slower, this.speed, faster, this.pauseBtn, this.muteBtn, menuBtn);
     top.append(res, enemyPanel, clockPanel);
 
     // Bottom: production + selection.
@@ -177,8 +182,22 @@ export class Hud {
     }
 
     this.banner = el('div', 'paused-banner', 'Paused — press Space to resume');
+    this.waitBanner = el('div', 'paused-banner wait-banner', 'Waiting for your friend…');
     this.toasts = el('div', 'toasts');
-    root.append(top, bottom, this.banner, this.toasts);
+    root.append(top, bottom, this.banner, this.waitBanner, this.toasts);
+  }
+
+  /** Online mode hides pause/speed controls (both players share one clock). */
+  setOnline(online: boolean): void {
+    for (const c of this.speedControls) c.classList.toggle('hidden-net', online);
+    this.netLabel.classList.toggle('hidden-net', !online);
+    if (!online) this.waitBanner.classList.remove('show');
+  }
+
+  setNetStatus(pingMs: number, waiting: boolean): void {
+    this.netLabel.textContent = `Online · ${pingMs} ms`;
+    this.netLabel.classList.toggle('slow', pingMs > 250);
+    this.waitBanner.classList.toggle('show', waiting);
   }
 
   toast(msg: string, kind: 'good' | 'bad' | 'info' = 'info'): void {

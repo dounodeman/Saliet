@@ -3,6 +3,9 @@ import { AIController } from '../ai/ai';
 import type { DifficultyName } from '../ai/difficulty';
 import { sound } from '../audio/sound';
 import { InputController, type InputHost } from '../input/input';
+import type { Lockstep } from '../net/lockstep';
+import type { NetMatch } from '../net/match';
+import type { MatchSettings } from '../net/protocol';
 import { getMap } from '../maps';
 import { Camera } from '../render/camera';
 import { Minimap } from '../render/minimap';
@@ -23,6 +26,8 @@ export interface SessionOptions {
   difficulty: DifficultyName;
   /** Menu backdrop: an AI match with no HUD and no input. */
   background?: boolean;
+  /** Online game against a friend (the local player's team comes from the match). */
+  online?: { match: NetMatch; settings: MatchSettings };
 }
 
 export interface SessionHooks {
@@ -45,6 +50,8 @@ export class GameSession implements InputHost {
   readonly ais: AIController[] = [];
   readonly spectating: boolean;
   readonly minimap: Minimap;
+  /** Active while playing online; null offline (or after the friend left). */
+  lockstep: Lockstep | null = null;
   spawnCityId = -1;
   menuOpen = false;
   private pending: Command[] = [];
@@ -62,11 +69,18 @@ export class GameSession implements InputHost {
   ) {
     const entry = getMap(options.mapId);
     this.world = createWorld(entry.build(options.seed), options.seed);
-    const spectating = options.playerTeam < 0 || options.background === true;
+    const online = options.online;
+    const spectating = !online && (options.playerTeam < 0 || options.background === true);
     this.spectating = spectating;
-    this.playerTeam = spectating ? 0 : options.playerTeam;
-    for (let t = 0; t < this.world.teams.length; t++) {
-      if (spectating || t !== this.playerTeam) this.ais.push(new AIController(t, options.difficulty, options.seed));
+    this.playerTeam = online ? online.match.localTeam : spectating ? 0 : options.playerTeam;
+    if (online) {
+      this.lockstep = online.match.beginGame(online.settings);
+      this.lockstep.onDesync = (tick) =>
+        this.goOffline(`The two games drifted apart at ${Math.floor(tick / 20)}s (desync). Continuing against the computer.`);
+    } else {
+      for (let t = 0; t < this.world.teams.length; t++) {
+        if (spectating || t !== this.playerTeam) this.ais.push(new AIController(t, options.difficulty, options.seed));
+      }
     }
     this.menuOpen = options.background === true;
     this.minimap = new Minimap(this.world, this.camera);
@@ -81,6 +95,7 @@ export class GameSession implements InputHost {
       toggleMute: () => this.toggleMute(),
     }, { spectating, minimap: this.minimap.canvas });
     hudRoot.style.display = options.background ? 'none' : '';
+    if (online) this.hud.setOnline(true);
     this.spawnCityId = spectating ? -1 : (this.world.cities.find((c) => c.owner === this.playerTeam)?.id ?? -1);
     this.loop = new FixedLoop(
       () => this.tick(),
@@ -92,6 +107,7 @@ export class GameSession implements InputHost {
   }
 
   start(): void {
+    this.loop.keepAliveWhenHidden = this.online;
     this.loop.start();
   }
 
@@ -128,7 +144,26 @@ export class GameSession implements InputHost {
 
   issue(cmd: Command): void {
     if (this.spectating) return;
-    this.pending.push(cmd);
+    if (this.lockstep) this.lockstep.queueLocal(cmd);
+    else this.pending.push(cmd);
+  }
+
+  get online(): boolean {
+    return this.lockstep !== null;
+  }
+
+  /**
+   * The friend left (or the games desynced): the computer takes over their army
+   * and the match carries on locally.
+   */
+  goOffline(reason: string): void {
+    if (!this.lockstep) return;
+    const remote = this.lockstep.remoteTeam;
+    this.lockstep = null;
+    this.hud.setOnline(false);
+    this.ais.push(new AIController(remote, 'normal', this.options.seed));
+    this.hud.toast(reason, 'bad');
+    this.hud.toast(`The computer now commands ${TEAM_COLORS[remote].name}.`, 'info');
   }
 
   setSpawnCity(cityId: number): void {
@@ -156,11 +191,19 @@ export class GameSession implements InputHost {
   }
 
   togglePause(): void {
+    if (this.online) {
+      this.hud.toast('Online games can’t be paused.');
+      return;
+    }
     this.loop.paused = !this.loop.paused;
     sound.play('ui');
   }
 
   changeSpeed(dir: 1 | -1): void {
+    if (this.online) {
+      this.hud.toast('Online games always run at normal speed.');
+      return;
+    }
     this.loop.changeSpeed(dir);
     sound.play('ui');
   }
@@ -184,12 +227,22 @@ export class GameSession implements InputHost {
 
   // ---- Loop ------------------------------------------------------------
 
-  private tick(): void {
-    const commands = this.pending;
-    this.pending = [];
+  private tick(): boolean {
+    if (this.world.winner !== -1) return true; // match over: nothing left to simulate
+    let commands: Command[];
+    if (this.lockstep) {
+      const cmds = this.lockstep.tryTick(this.world.tick, performance.now());
+      if (!cmds) return false; // waiting for the other player's input
+      commands = cmds;
+    } else {
+      commands = this.pending;
+      this.pending = [];
+    }
     for (const ai of this.ais) commands.push(...ai.update(this.world));
     step(this.world, commands);
+    this.lockstep?.afterStep(this.world);
     this.handleEvents(this.world.events);
+    return true;
   }
 
   private handleEvents(events: readonly SimEvent[]): void {
@@ -254,6 +307,11 @@ export class GameSession implements InputHost {
     if (this.hudTimer <= 0 && !this.options.background) {
       this.hudTimer = 0.1;
       this.minimap.draw();
+      if (this.lockstep) {
+        const ls = this.lockstep;
+        const waiting = ls.waitingSince >= 0 && performance.now() - ls.waitingSince > 500;
+        this.hud.setNetStatus(Math.round(this.options.online!.match.rtt), waiting);
+      }
       this.hud.update({
         world: this.world,
         playerTeam: this.playerTeam,

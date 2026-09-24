@@ -112,7 +112,15 @@ export function hideOverlay(root: HTMLElement): void {
   root.innerHTML = '';
 }
 
-export function showMainMenu(root: HTMLElement, initial: MenuChoice, onPlay: (c: MenuChoice, spectate: boolean) => void): void {
+export interface MainMenuActions {
+  play(c: MenuChoice, spectate: boolean): void;
+  /** Host an online game with these settings. */
+  hostFriend(c: MenuChoice): void;
+  /** Join a friend's game by code. */
+  joinFriend(code: string): void;
+}
+
+export function showMainMenu(root: HTMLElement, initial: MenuChoice, actions: MainMenuActions): void {
   const choice = { ...initial };
   root.innerHTML = '';
   root.classList.add('show', 'menu-bg');
@@ -172,7 +180,7 @@ export function showMainMenu(root: HTMLElement, initial: MenuChoice, onPlay: (c:
   card.append(seedRow);
 
   // Difficulty.
-  card.append(el('h3', 'section', 'Opponent'));
+  card.append(el('h3', 'section', 'Computer opponent'));
   const seg = el('div', 'segmented');
   const segButtons: HTMLButtonElement[] = [];
   for (const d of Object.values(DIFFICULTIES)) {
@@ -189,18 +197,40 @@ export function showMainMenu(root: HTMLElement, initial: MenuChoice, onPlay: (c:
   card.append(seg);
 
   // Actions.
-  const actions = el('div', 'actions');
-  actions.append(
-    button('Play', 'primary big', () => {
+  const row = el('div', 'actions');
+  row.append(
+    button('Play vs computer', 'primary big', () => {
       saveChoice(choice);
-      onPlay(choice, false);
+      actions.play(choice, false);
     }),
-    button('Watch AI vs AI', '', () => {
+    button('Play with a friend', 'big friend', () => {
       saveChoice(choice);
-      onPlay(choice, true);
+      actions.hostFriend(choice);
     }),
   );
-  card.append(actions);
+  card.append(row);
+  const extra = el('div', 'actions secondary');
+  const codeInput = el('input', 'code-input');
+  codeInput.placeholder = 'Friend’s code';
+  codeInput.maxLength = 8;
+  codeInput.spellcheck = false;
+  const joinBtn = button('Join', '', () => {
+    if (codeInput.value.trim().length >= 4) actions.joinFriend(codeInput.value);
+    else codeInput.focus();
+  });
+  codeInput.onkeydown = (e) => {
+    if (e.key === 'Enter') joinBtn.click();
+  };
+  extra.append(
+    button('Watch AI vs AI', 'quiet', () => {
+      saveChoice(choice);
+      actions.play(choice, true);
+    }),
+    el('span', 'divider'),
+    codeInput,
+    joinBtn,
+  );
+  card.append(extra);
 
   // How to play.
   const how = el('details', 'how');
@@ -209,7 +239,9 @@ export function showMainMenu(root: HTMLElement, initial: MenuChoice, onPlay: (c:
   for (const r of RULES) rules.append(el('li', '', r));
   how.append(rules, controlsTable());
   card.append(how);
-  card.append(el('p', 'muted small footer', 'You are Cobalt (blue). Tip: select a group, then right-drag a line where you want it to stand.'));
+  card.append(
+    el('p', 'muted small footer', 'Against the computer you are Cobalt (blue). Tip: select a group, then right-drag a line where you want it to stand.'),
+  );
   root.append(card);
 }
 
@@ -217,19 +249,24 @@ export interface PauseMenuOptions {
   onResume(): void;
   onRestart(): void;
   onQuit(): void;
+  /** Online games keep running behind the menu and can't be restarted. */
+  online?: boolean;
 }
 
 export function showPauseMenu(root: HTMLElement, opts: PauseMenuOptions): void {
   root.innerHTML = '';
   root.classList.add('show');
   const card = el('div', 'card pause');
-  card.append(el('h1', 'title small-title', 'Paused'));
+  card.append(el('h1', 'title small-title', opts.online ? 'Menu' : 'Paused'));
+  if (opts.online) card.append(el('p', 'muted small center', 'The game keeps running while this menu is open.'));
   const actions = el('div', 'actions column');
   const mute = button(sound.muted ? 'Sound: off' : 'Sound: on', '', () => {
     sound.toggleMute();
     mute.textContent = sound.muted ? 'Sound: off' : 'Sound: on';
   });
-  actions.append(button('Resume', 'primary', opts.onResume), button('Restart', '', opts.onRestart), mute, button('Quit to menu', '', opts.onQuit));
+  actions.append(button('Resume', 'primary', opts.onResume));
+  if (!opts.online) actions.append(button('Restart', '', opts.onRestart));
+  actions.append(mute, button(opts.online ? 'Leave game' : 'Quit to menu', '', opts.onQuit));
   card.append(actions);
   const how = el('details', 'how');
   how.append(el('summary', '', 'Controls'), controlsTable());
@@ -241,8 +278,8 @@ export interface GameOverOptions {
   title: string;
   subtitle: string;
   rows: Array<[string, string, string]>;
-  onAgain(): void;
-  onMenu(): void;
+  actions: Array<{ label: string; primary?: boolean; onClick(): void }>;
+  note?: string;
 }
 
 export function showGameOver(root: HTMLElement, opts: GameOverOptions): void {
@@ -260,8 +297,89 @@ export function showGameOver(root: HTMLElement, opts: GameOverOptions): void {
     t.append(tr);
   }
   card.append(t);
+  if (opts.note) card.append(el('p', 'muted small center', opts.note));
   const actions = el('div', 'actions');
-  actions.append(button('Play again', 'primary', opts.onAgain), button('Main menu', '', opts.onMenu));
+  for (const a of opts.actions) actions.append(button(a.label, a.primary ? 'primary' : '', a.onClick));
   card.append(actions);
   root.append(card);
+}
+
+// ---- Online lobby --------------------------------------------------------
+
+export interface LobbyPanel {
+  setLink(link: string, code: string): void;
+  setStatus(text: string, kind?: 'wait' | 'good' | 'bad'): void;
+}
+
+function statusLine(): { root: HTMLElement; set: (text: string, kind?: 'wait' | 'good' | 'bad') => void } {
+  const root = el('div', 'lobby-status wait');
+  const dot = el('span', 'status-dot');
+  const text = el('span', '', '');
+  root.append(dot, text);
+  return {
+    root,
+    set: (t, kind = 'wait') => {
+      text.textContent = t;
+      root.className = `lobby-status ${kind}`;
+    },
+  };
+}
+
+/** Host side: shows the invite link while waiting for a friend. */
+export function showHostPanel(root: HTMLElement, opts: { mapName: string; onCancel(): void }): LobbyPanel {
+  root.innerHTML = '';
+  root.classList.add('show', 'menu-bg');
+  const card = el('div', 'card lobby');
+  card.append(el('h1', 'title small-title', 'Play with a friend'));
+  card.append(el('p', 'muted center', 'Send this link to your friend. The game starts as soon as they open it.'));
+  const linkRow = el('div', 'link-row');
+  const linkInput = el('input', 'link-input');
+  linkInput.readOnly = true;
+  linkInput.value = 'Creating a game…';
+  const copy = button('Copy link', 'primary', () => {
+    linkInput.select();
+    void navigator.clipboard?.writeText(linkInput.value).then(
+      () => (copy.textContent = 'Copied!'),
+      () => document.execCommand('copy'),
+    );
+    setTimeout(() => (copy.textContent = 'Copy link'), 1800);
+  });
+  copy.disabled = true;
+  linkRow.append(linkInput, copy);
+  card.append(linkRow);
+  const codeLine = el('p', 'muted small center', '');
+  card.append(codeLine);
+  card.append(el('p', 'small center', `Map: ${opts.mapName} · You play Cobalt (blue), your friend plays Vermilion (red).`));
+  const status = statusLine();
+  status.set('Waiting for your friend to open the link… keep this page open.');
+  card.append(status.root);
+  const actions = el('div', 'actions');
+  actions.append(button('Cancel', '', opts.onCancel));
+  card.append(actions);
+  root.append(card);
+  return {
+    setLink: (link, code) => {
+      linkInput.value = link;
+      copy.disabled = false;
+      codeLine.textContent = `Or they can type the code ${code} on the main menu.`;
+    },
+    setStatus: status.set,
+  };
+}
+
+/** Guest side: shown while connecting to a friend's game. */
+export function showJoinPanel(root: HTMLElement, opts: { code: string; onCancel(): void }): LobbyPanel {
+  root.innerHTML = '';
+  root.classList.add('show', 'menu-bg');
+  const card = el('div', 'card lobby');
+  card.append(el('h1', 'title small-title', 'Joining a game'));
+  card.append(el('p', 'muted center', `Game code ${opts.code}`));
+  const status = statusLine();
+  status.set('Connecting to your friend…');
+  card.append(status.root);
+  const actions = el('div', 'actions');
+  actions.append(button('Back to menu', '', opts.onCancel));
+  card.append(actions);
+  root.append(card);
+  return { setLink: () => undefined, setStatus: status.set };
 }

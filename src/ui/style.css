@@ -793,3 +793,126 @@ kbd {
     display: none;
   }
 }
+
+/* ------------------------------------------------------------ Online */
+
+.hidden-net {
+  display: none !important;
+}
+
+.net-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--good);
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
+.net-label.slow {
+  color: #b7791f;
+}
+
+.wait-banner {
+  top: 100px;
+  background: rgba(160, 60, 40, 0.9);
+}
+
+.btn.friend {
+  background: #fffdf5;
+  border-color: rgba(45, 42, 36, 0.5);
+}
+
+.actions.secondary {
+  margin-top: 12px;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn.quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.divider {
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+  margin: 0 4px;
+}
+
+.code-input,
+.link-input {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #fffdf5;
+  color: var(--ink);
+  user-select: text;
+}
+
+.code-input {
+  width: 130px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.card.lobby {
+  width: min(540px, 100%);
+}
+
+.center {
+  text-align: center;
+}
+
+.link-row {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 4px;
+}
+
+.link-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.lobby-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #b7791f;
+  flex: none;
+}
+
+.lobby-status.wait .status-dot {
+  animation: pulse 0.9s ease-in-out infinite alternate;
+}
+
+.lobby-status.good .status-dot {
+  background: var(--good);
+}
+
+.lobby-status.bad {
+  color: var(--bad);
+}
+
+.lobby-status.bad .status-dot {
+  background: var(--bad);
+}

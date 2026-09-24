@@ -314,3 +314,25 @@ All six milestones are complete; each was type-checked, tested, built,
 play-tested in the browser and committed. Possible next steps: fog of war (filter
 `makeView`), replays from the command log, lockstep multiplayer, more maps,
 per-unit supply-range overlay.
+
+## 11. Online multiplayer (added after M6)
+
+* **Model:** two-player deterministic lockstep. Only `Command`s cross the
+  network; both browsers run the identical simulation. Local commands are
+  scheduled `delay` ticks ahead (2–10 ticks, chosen by the host from the median
+  of 5 pings) and every tick's command list is sent, even when empty, so a tick
+  runs only when both players' inputs are known. Commands execute in team order.
+* **Integrity:** remote commands for the local player's team are dropped;
+  state hashes are exchanged every 100 ticks (desync → both continue vs the AI);
+  build id + `PROTOCOL_VERSION` must match or the guest is turned away.
+* **Transport:** WebRTC data channel via PeerJS (public signalling server and
+  TURN relay, so the static GitHub Pages site needs no backend). Invite links
+  are `?join=CODE` with 6-character codes.
+* **Robustness:** messages arriving before a handler or game exists are buffered;
+  a Web Worker timer keeps online games ticking when the tab is in the background
+  (browsers freeze animation frames there); a watchdog treats 10 s of silence
+  while waiting as a disconnect; when a player leaves, the AI takes over their army.
+* **Rules online:** no pause, fixed 1× speed; the host can start rematches (the
+  game id increments so stray messages from an old game are ignored).
+* **Tests:** two simulated clients over a lossy-latency fake network, each played
+  by an AI through its own lockstep, finish full games with identical hashes.
