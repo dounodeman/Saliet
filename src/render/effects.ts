@@ -22,7 +22,7 @@ export class Effects {
   }
 
   spark(x: number, y: number, vx: number, vy: number, now: number, color: string): void {
-    this.list.push({ kind: 'spark', x, y, vx, vy, t0: now, dur: 0.25 + Math.random() * 0.2, r0: 0.08, r1: 0.02, color, width: 1 });
+    this.list.push({ kind: 'spark', x, y, vx, vy, t0: now, dur: 0.3 + Math.random() * 0.25, r0: 0.11, r1: 0.03, color, width: 1 });
   }
 
   puff(x: number, y: number, now: number, color: string, r = 0.9): void {
@@ -56,7 +56,7 @@ export class Effects {
         const age = now - e.t0;
         ctx.fillStyle = e.color;
         ctx.beginPath();
-        ctx.arc(e.x + e.vx * age, e.y + e.vy * age, Math.max(r, 1.2 / zoom), 0, Math.PI * 2);
+        ctx.arc(e.x + e.vx * age, e.y + e.vy * age, Math.max(r, 1.5 / zoom), 0, Math.PI * 2);
         ctx.fill();
       }
     }

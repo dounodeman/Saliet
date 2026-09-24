@@ -80,6 +80,7 @@ export class Renderer {
     this.drawCities(s, z);
     this.drawOrders(s, z);
     this.drawUnits(s, z);
+    this.drawCombat(s, z);
     this.effects.prune(s.now);
     this.effects.draw(ctx, s.now, z);
     this.drawLinePreview(s, z);
@@ -197,6 +198,54 @@ export class Renderer {
       ctx.arc(e.x, e.y, 0.18, 0, Math.PI * 2);
     }
     ctx.fill();
+  }
+
+  /** A flickering starburst where each fighter meets its target, plus sparks. */
+  private drawCombat(s: RenderState, z: number): void {
+    const ctx = this.ctx;
+    const world = s.world;
+    ctx.lineCap = 'round';
+    for (const u of world.units) {
+      if (u.targetId < 0) continue;
+      const t = world.unitById.get(u.targetId);
+      if (!t) continue;
+      if (t.targetId === u.id && t.id < u.id) continue; // mutual pair: draw it once
+      const a = interpolated(u, s.alpha);
+      const b = interpolated(t, s.alpha);
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const ra = UNIT_STATS[u.type].radius;
+      const rb = UNIT_STATS[t.type].radius;
+      // Contact point: halfway between the two edges.
+      const k = (ra + (d - ra - rb) / 2) / d;
+      const cx = a.x + dx * k;
+      const cy = a.y + dy * k;
+      const phase = s.now * 9 + u.id;
+      const len = Math.max(0.36, 6 / z) * (0.75 + 0.25 * Math.sin(phase * 2.3));
+      ctx.globalAlpha = 0.7 + 0.3 * Math.abs(Math.sin(phase));
+      ctx.beginPath();
+      for (let r = 0; r < 4; r++) {
+        const ang = phase * 0.6 + (r * Math.PI) / 4;
+        const ex = Math.cos(ang) * len;
+        const ey = Math.sin(ang) * len;
+        ctx.moveTo(cx - ex, cy - ey);
+        ctx.lineTo(cx + ex, cy + ey);
+      }
+      ctx.strokeStyle = 'rgba(45,30,15,0.55)';
+      ctx.lineWidth = Math.max(3.2 / z, 0.12);
+      ctx.stroke();
+      ctx.strokeStyle = '#fff3c4';
+      ctx.lineWidth = Math.max(1.6 / z, 0.06);
+      ctx.stroke();
+      if (Math.random() < 0.15) {
+        const ang = Math.random() * Math.PI * 2;
+        const sp = 1.2 + Math.random() * 2;
+        const col = TEAM_COLORS[Math.random() < 0.5 ? u.team : t.team];
+        this.effects.spark(cx, cy, Math.cos(ang) * sp, Math.sin(ang) * sp, s.now, Math.random() < 0.5 ? '#fff6d6' : col.main);
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 
   private drawUnits(s: RenderState, z: number): void {

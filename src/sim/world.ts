@@ -1,4 +1,5 @@
 import { CITY, UNIT_STATS } from '../config';
+import { resolveCombat } from './combat';
 import { applyCommand, type Command } from './commands';
 import { moveUnits, processPathQueue, separateUnits, updateStall } from './movement';
 import { buildNavGrid } from './pathfinding';
@@ -6,7 +7,7 @@ import { createRngState } from './rng';
 import { SpatialHash } from './spatial';
 import { createTerritory } from './territory';
 import { NUM_TEAMS, type Scenario, type TeamState, type World } from './types';
-import { createUnit } from './units';
+import { createUnit, removeDeadUnits, updateConditions } from './units';
 
 /** Derived, non-logical helpers kept next to the world (never hashed or serialized). */
 const spatialByWorld = new WeakMap<World, SpatialHash>();
@@ -76,9 +77,13 @@ export function step(world: World, commands: readonly Command[] = []): void {
   }
 
   processPathQueue(world);
+  resolveCombat(world, hash);
+  removeDeadUnits(world);
   moveUnits(world);
   separateUnits(world, hash);
   updateStall(world);
+  updateConditions(world);
+  removeDeadUnits(world);
 
   world.tick++;
 }
