@@ -8,7 +8,12 @@ const params = new URLSearchParams(location.search);
 const session = new GameSession(
   canvas,
   hudRoot,
-  { mapId: params.get('map') ?? 'twin-rivers', seed: Number(params.get('seed') ?? 1), playerTeam: 0 },
+  {
+    mapId: params.get('map') ?? 'twin-rivers',
+    seed: Number(params.get('seed') ?? 1),
+    playerTeam: params.has('spectate') ? -1 : 0,
+    difficulty: (params.get('ai') as 'easy' | 'normal' | 'hard' | null) ?? 'normal',
+  },
   {
     onMenu: (s) => {
       s.togglePause();

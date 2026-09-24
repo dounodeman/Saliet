@@ -1,4 +1,6 @@
 import type { UnitType } from '../config';
+import { AIController } from '../ai/ai';
+import type { DifficultyName } from '../ai/difficulty';
 import { sound } from '../audio/sound';
 import { InputController, type InputHost } from '../input/input';
 import { getMap } from '../maps';
@@ -15,7 +17,9 @@ import { FixedLoop } from './loop';
 export interface SessionOptions {
   mapId: string;
   seed: number;
+  /** Team the human controls; -1 to spectate an AI-vs-AI match. */
   playerTeam: number;
+  difficulty: DifficultyName;
 }
 
 export interface SessionHooks {
@@ -35,6 +39,7 @@ export class GameSession implements InputHost {
   readonly input: InputController;
   readonly hud: Hud;
   readonly loop: FixedLoop;
+  readonly ais: AIController[] = [];
   spawnCityId = -1;
   menuOpen = false;
   private pending: Command[] = [];
@@ -52,7 +57,11 @@ export class GameSession implements InputHost {
   ) {
     const entry = getMap(options.mapId);
     this.world = createWorld(entry.build(options.seed), options.seed);
-    this.playerTeam = options.playerTeam;
+    const spectating = options.playerTeam < 0;
+    this.playerTeam = spectating ? 0 : options.playerTeam;
+    for (let t = 0; t < this.world.teams.length; t++) {
+      if (spectating || t !== this.playerTeam) this.ais.push(new AIController(t, options.difficulty, options.seed));
+    }
     this.renderer = new Renderer(canvas, this.world.map);
     this.input = new InputController(canvas, this);
     this.hud = new Hud(hudRoot, this.playerTeam, {
@@ -164,6 +173,7 @@ export class GameSession implements InputHost {
   private tick(): void {
     const commands = this.pending;
     this.pending = [];
+    for (const ai of this.ais) commands.push(...ai.update(this.world));
     step(this.world, commands);
     this.handleEvents(this.world.events);
   }

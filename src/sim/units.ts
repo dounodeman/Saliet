@@ -77,8 +77,14 @@ export function updateConditions(world: World): void {
   }
 }
 
-/** Rough combat value of a unit (used by the AI and HUD). */
+/**
+ * Rough combat value of a unit, in "fresh light infantry" units. Uses the
+ * geometric mean of damage and health (Lanchester-style), so a fresh heavy is
+ * worth about its cost in lights.
+ */
 export function unitStrength(u: Pick<Unit, 'type' | 'hp' | 'stamina'>): number {
   const stats = UNIT_STATS[u.type];
-  return (stats.dps / UNIT_STATS.light.dps) * (u.hp / UNIT_STATS.light.maxHp) * staminaDamageFactor(u.stamina);
+  const dmg = stats.dps / UNIT_STATS.light.dps;
+  const hp = Math.max(0, u.hp) / UNIT_STATS.light.maxHp;
+  return Math.sqrt(dmg * hp) * staminaDamageFactor(u.stamina);
 }
