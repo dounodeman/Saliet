@@ -37,6 +37,8 @@ export function hashWorld(world: World): string {
     num(UNIT_TYPES.indexOf(u.type));
     num(u.x);
     num(u.y);
+    num(u.holdX);
+    num(u.holdY);
     num(u.hp);
     num(u.stamina);
     num(u.targetId);

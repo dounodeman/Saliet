@@ -4,7 +4,7 @@ import { staminaSpeedFactor } from './combat';
 import { findPath, isPointPassable } from './pathfinding';
 import type { SpatialHash } from './spatial';
 import { terrainAt, terrainMod } from './terrain';
-import type { Unit, World } from './types';
+import type { Unit, Vec2, World } from './types';
 import { DIR8 } from './vec';
 
 /** Plans paths for queued units, at most `pathsPerTick` per tick, FIFO. */
@@ -41,6 +41,10 @@ function arrive(world: World, u: Unit): void {
   u.pathIndex = 0;
   u.stallTicks = 0;
   if (u.waypoints.length > 0) requestPath(world, u);
+  else {
+    u.holdX = u.x;
+    u.holdY = u.y;
+  }
 }
 
 export function unitSpeed(world: World, u: Unit): number {
@@ -56,6 +60,7 @@ export function moveUnits(world: World): void {
     u.moving = false;
     if (!u.path || u.pathPending) {
       u.lastSpeed = 0;
+      if (!u.pathPending && u.waypoints.length === 0 && !u.engaged) returnToHold(world, u);
       continue;
     }
     const speed = unitSpeed(world, u);
@@ -83,8 +88,36 @@ export function moveUnits(world: World): void {
   }
 }
 
+/** Idle units that were shoved out of place walk back (no pathfinding; it's a short hop). */
+function returnToHold(world: World, u: Unit): void {
+  const dx = u.holdX - u.x;
+  const dy = u.holdY - u.y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d <= MOVEMENT.holdSlack) return;
+  if (d > 6) {
+    // Pushed far away (e.g. by a retreating crowd): adopt the new spot.
+    u.holdX = u.x;
+    u.holdY = u.y;
+    return;
+  }
+  const stepLen = Math.min(d - MOVEMENT.holdSlack * 0.5, unitSpeed(world, u) * MOVEMENT.holdReturnSpeed * DT);
+  u.x += (dx / d) * stepLen;
+  u.y += (dy / d) * stepLen;
+  u.moving = true;
+}
+
 function isHolding(u: Unit): boolean {
   return u.engaged || (u.path === null && !u.pathPending);
+}
+
+/** Unit direction of travel toward the current path point, or null if not walking. */
+function travelDir(u: Unit): Vec2 | null {
+  if (!u.path || u.pathPending || u.engaged || u.pathIndex >= u.path.length) return null;
+  const p = u.path[u.pathIndex];
+  const dx = p.x - u.x;
+  const dy = p.y - u.y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  return d > 1e-6 ? { x: dx / d, y: dy / d } : null;
 }
 
 const MAX_RADIUS = Math.max(UNIT_STATS.light.radius, UNIT_STATS.heavy.radius);
@@ -111,17 +144,43 @@ export function separateUnits(world: World, hash: SpatialHash): void {
         let dy = b.y - a.y;
         const d2 = dx * dx + dy * dy;
         if (d2 >= minD * minD) return;
-        let d = Math.sqrt(d2);
+        const d = Math.sqrt(d2);
         if (d < 1e-6) {
+          // Exactly stacked: pick a direction from the ids so the result is deterministic.
           const dir = DIR8[(a.id * 31 + b.id * 17) % 8];
           dx = dir.x;
           dy = dir.y;
-          d = 1;
         } else {
           dx /= d;
           dy /= d;
         }
-        const overlap = minD - Math.min(d, minD);
+        const overlap = minD - d;
+        if (a.team === b.team) {
+          // A walking unit bumping a stationary friend: add a sideways component so
+          // the friend steps aside (and later drifts back) instead of a head-on deadlock.
+          const am = travelDir(a);
+          const bm = travelDir(b);
+          if ((am === null) !== (bm === null)) {
+            const m = (am ?? bm)!;
+            const holderIsB = am !== null;
+            const holder = holderIsB ? b : a;
+            let px = -m.y;
+            let py = m.x;
+            // Side of the mover's line the holder is on (n points a→b).
+            let side = (holderIsB ? dx : -dx) * px + (holderIsB ? dy : -dy) * py;
+            if (side > -0.05 && side < 0.05) side = (holder.id & 1) === 1 ? 1 : -1;
+            if (side < 0) {
+              px = -px;
+              py = -py;
+            }
+            const sgn = holderIsB ? 1.2 : -1.2;
+            dx += px * sgn;
+            dy += py * sgn;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            dx /= len;
+            dy /= len;
+          }
+        }
         const mb = UNIT_STATS[b.type].mass * (isHolding(b) ? MOVEMENT.holdMassMult : 1);
         const wa = mb / (ma + mb);
         const wb = ma / (ma + mb);
@@ -168,9 +227,7 @@ export function updateStall(world: World): void {
     const gx = wp.x - u.x;
     const gy = wp.y - u.y;
     const dGoal = Math.sqrt(gx * gx + gy * gy);
-    if (dGoal < MOVEMENT.arriveEps) {
-      arrive(world, u);
-    } else if (u.stallTicks > MOVEMENT.stallTicks && dGoal < MOVEMENT.stallRadius) {
+    if (u.stallTicks > MOVEMENT.stallTicks && dGoal < MOVEMENT.stallRadius) {
       arrive(world, u);
     } else if (u.stallTicks > MOVEMENT.repathTicks) {
       if (dGoal < MOVEMENT.stallRadius * 2) arrive(world, u);

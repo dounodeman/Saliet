@@ -110,8 +110,6 @@ export const HEALTH = {
 };
 
 export const MOVEMENT = {
-  /** A unit is "at" its target when this close. */
-  arriveEps: 0.1,
   /** Ticks of little progress near the goal before a unit considers itself arrived. */
   stallTicks: 16,
   /** "Near the goal" radius for the stall rule. */
@@ -128,6 +126,10 @@ export const MOVEMENT = {
   pathsPerTick: 24,
   /** Target spacing between units in a group move. */
   formationSpacing: 1.25,
+  /** Idle units shoved farther than this from their hold point walk back. */
+  holdSlack: 0.35,
+  /** Speed multiplier while walking back to the hold point. */
+  holdReturnSpeed: 0.5,
   /** Maximum queued waypoints per unit. */
   maxWaypoints: 16,
 };

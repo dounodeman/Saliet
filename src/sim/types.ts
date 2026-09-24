@@ -21,6 +21,9 @@ export interface Unit {
   prevY: number;
   hp: number;
   stamina: number;
+  /** Where an idle unit stands; it drifts back here after being shoved. */
+  holdX: number;
+  holdY: number;
   /** Remaining order targets; waypoints[0] is the one being walked to. */
   waypoints: Vec2[];
   /** Path to waypoints[0] (not including the start point); null until planned. */

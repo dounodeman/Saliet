@@ -106,6 +106,8 @@ export function applyCommand(world: World, cmd: Command): boolean {
         u.path = null;
         u.pathIndex = 0;
         u.stallTicks = 0;
+        u.holdX = u.x;
+        u.holdY = u.y;
       }
       return units.length > 0;
     }

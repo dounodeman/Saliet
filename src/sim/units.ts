@@ -14,6 +14,8 @@ export function createUnit(world: World, team: number, type: UnitType, x: number
     y: p.y,
     prevX: p.x,
     prevY: p.y,
+    holdX: p.x,
+    holdY: p.y,
     hp: UNIT_STATS[type].maxHp,
     stamina: STAMINA.max,
     waypoints: [],

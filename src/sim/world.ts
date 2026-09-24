@@ -1,6 +1,6 @@
 import { CITY, UNIT_STATS } from '../config';
 import { applyCommand, type Command } from './commands';
-import { moveUnits, processPathQueue } from './movement';
+import { moveUnits, processPathQueue, separateUnits, updateStall } from './movement';
 import { buildNavGrid } from './pathfinding';
 import { createRngState } from './rng';
 import { SpatialHash } from './spatial';
@@ -64,7 +64,7 @@ export function createWorld(scenario: Scenario, seed: number): World {
 export function step(world: World, commands: readonly Command[] = []): void {
   world.events = [];
   if (world.winner !== -1) return;
-  spatialFor(world);
+  const hash = spatialFor(world);
 
   for (const cmd of commands) {
     world.commandLog.push({ tick: world.tick, cmd });
@@ -77,6 +77,8 @@ export function step(world: World, commands: readonly Command[] = []): void {
 
   processPathQueue(world);
   moveUnits(world);
+  separateUnits(world, hash);
+  updateStall(world);
 
   world.tick++;
 }
